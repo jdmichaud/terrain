@@ -2,14 +2,51 @@
 <html>
 <head>
   <title>Terrain</title>
+  <meta charset="utf-8">
+  <link rel="icon" href="data:;base64,="> <!-- Prevent request to favicon -->
   <script src="https://unpkg.com/mathjs/dist/math.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/jdmichaud/linalg/mathjs.shim.js"></script>
   <script src="http://unpkg.com/@jdmichaud/observable@0.3.3/dist/index.js"></script>
+  <script src="utils.js"></script>
   <script src="main.js"></script>
+
+  <style>
+    .viewport {
+      width: 512px;
+      height: 512px;
+      border: 1px solid #CCC;
+      cursor: crosshair;
+      position: relative;
+    }
+    .underlay {
+      position: absolute;
+      top: 0%;
+      left: 0%;
+      width: 100%;
+      height: 100%;
+      /* click events to go to viewport not individual svg elements */
+      pointer-events: none;
+    }
+    .overlay, .textOverlay {
+      position: absolute;
+      top: 0%;
+      left: 0%;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+
 </head>
 <body>
-  <div class="viewport">
-    <canvas class="image">
+  <div class="viewport" id="main">
+    <canvas class="underlay"></canvas>
+    <svg class="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="textOverlay"></div>
+  </div>
+  <div class="viewport" id="map">
+    <canvas class="underlay"></canvas>
+    <svg class="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="textOverlay"></div>
   </div>
 </body>
 </html>
