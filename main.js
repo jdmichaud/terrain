@@ -46,7 +46,7 @@ function drawCamera(viewport, camera) {
   fragment.appendChild(createPolyline([camera.eye, horizon], '5', 'green'));
 
   {
-    const { left, right } = getLeftRight(camera, camera.depth);
+    const { left, right } = getLeftRight(camera)(camera.depth);
     fragment.appendChild(createCircle(left, 10, 'green'));
     fragment.appendChild(createCircle(right, 10, 'green'));
     fragment.appendChild(createPolyline([left, right], '5', 'green'));
@@ -55,14 +55,28 @@ function drawCamera(viewport, camera) {
   svg.appendChild(fragment);
 }
 
-function getLeftRight(camera, distance) {
+function getLeftRight(camera) {
   const direction = camera.look.sub(camera.eye).normalize();
   const orthogonalVector = getOrthogonalVector(direction).normalize();
-  const fovWidthAtDistance = camera.fov.width * (distance / camera.depth);
-  const horizon = camera.eye.add(direction.mul(distance));
-  return {
-    left: horizon.add(orthogonalVector.mul(fovWidthAtDistance / 2)),
-    right: horizon.sub(orthogonalVector.mul(fovWidthAtDistance / 2)),
+  return (distance) => {
+    const fovWidthAtDistance = camera.fov.width * (distance / camera.depth);
+    // camera.eye.add(direction.mul(distance)) is too slow
+    const horizonX = camera.eye[0] + direction[0] * distance;
+    const horizonY = camera.eye[1] + direction[1] * distance;
+    const halfFovWidthAtDistance = fovWidthAtDistance / 2
+    const halfOrthogonalVectorX = orthogonalVector[0] * halfFovWidthAtDistance;
+    const halfOrthogonalVectorY = orthogonalVector[1] * halfFovWidthAtDistance;
+    // left: horizon.add(orthogonalVector.mul(fovWidthAtDistance / 2)),
+    const left = [
+      horizonX + halfOrthogonalVectorX | 0,
+      horizonY + halfOrthogonalVectorY | 0,
+    ];
+    // right: horizon.sub(orthogonalVector.mul(fovWidthAtDistance / 2)),
+    const right = [
+      horizonX - halfOrthogonalVectorX | 0,
+      horizonY - halfOrthogonalVectorY | 0,
+    ];
+    return { left, right };
   };
 }
 
@@ -73,6 +87,44 @@ function getLine(x, y) {
     a,
     b: x[1] - x[0] * a,
   }
+}
+
+function drawVerticalRect(buffer, { width, height }, x, y, dx, color) {
+  for (var i = x; i < x + dx; i++) {
+    for (var j = y; j < height; j++) {
+      Things[i + j * width] = color;
+    }
+  }
+}
+
+function drawImage(viewport, model) {
+  const then = performance.now();
+  const canvas = viewport.getElementsByTagName('canvas')[0];
+  const ctx = canvas.getContext('2d');
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const { width, height } = imageData.width;
+  const buffer = new Uint32Array(imageData.data.buffer);
+  const camera = model.camera.get();
+  const direction = camera.look.sub(camera.eye);
+  const directionNorm = direction.norm();
+  const getLeftRightWithCamera = getLeftRight(camera);
+  for (let distance = camera.depth; distance > directionNorm; --distance) {
+    let { left, right } = getLeftRightWithCamera(distance);
+    if (left[0] > right[0]) {
+      const tmp = left;
+      left = right;
+      right = tmp;
+    }
+    const { a, b } = getLine(left, right);
+    const horizonLineWidth = right[0] - left[0];
+    const dx = (width / (horizonLineWidth)) | 0;
+    for (let x = 0; x < horizonLineWidth; ++x) {
+      const y = a * x + b | 0;
+      drawVerticalRect(buffer, { width, height }, x, y, dx, 0xFF000000);
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+  console.log(`done in ${(performance.now() - then).toFixed(2)}`);
 }
 
 async function main() {
@@ -97,6 +149,7 @@ async function main() {
   drawMapBackground(mapViewport, model.colorMap);
   model.camera.subscribe(camera => {
     drawCamera(mapViewport, camera);
+    drawImage(viewport, model);
   });
 
   // For debug purposes
