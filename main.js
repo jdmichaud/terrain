@@ -30,25 +30,50 @@ function drawMapBackground(viewport, background) {
   const ctx = canvas.getContext('2d');
   canvas.width = background.width;
   canvas.height = background.height;
-  ctx.putImageData(background, 0, 0);
+  // ctx.putImageData(background, 0, 0);
   // Set SVG size
   svg.setAttribute('viewBox', `0 0 ${background.width} ${background.height}`);
 }
 
 function drawCamera(viewport, camera) {
   const svg = clearSvg(viewport.getElementsByTagName('svg')[0]);
-  console.log(svg);
-  console.log(camera.eye);
 
   const fragment = document.createDocumentFragment();
-  fragment.appendChild(createCircle(camera.eye, 10, 'white'));
-  const horizon = camera.look.sub(camera.eye).mul(camera.depth);
-  fragment.appendChild(createCircle(horizon, 10, 'white'));
-  fragment.appendChild(createPolyline([camera.eye, horizon], '5', 'white'));
+  fragment.appendChild(createCircle(camera.eye, 10, 'green'));
+  const direction = camera.look.sub(camera.eye).normalize();
+  const horizon = camera.eye.add(direction.mul(camera.depth));
+  fragment.appendChild(createCircle(horizon, 10, 'green'));
+  fragment.appendChild(createPolyline([camera.eye, horizon], '5', 'green'));
+
+  {
+    const { left, right } = getLeftRight(camera, camera.depth);
+    fragment.appendChild(createCircle(left, 10, 'green'));
+    fragment.appendChild(createCircle(right, 10, 'green'));
+    fragment.appendChild(createPolyline([left, right], '5', 'green'));
+  }
 
   svg.appendChild(fragment);
 }
 
+function getLeftRight(camera, distance) {
+  const direction = camera.look.sub(camera.eye).normalize();
+  const orthogonalVector = getOrthogonalVector(direction).normalize();
+  const fovWidthAtDistance = camera.fov.width * (distance / camera.depth);
+  const horizon = camera.eye.add(direction.mul(distance));
+  return {
+    left: horizon.add(orthogonalVector.mul(fovWidthAtDistance / 2)),
+    right: horizon.sub(orthogonalVector.mul(fovWidthAtDistance / 2)),
+  };
+}
+
+// From two points x and y return a and b so that y = a.x + b
+function getLine(x, y) {
+  const a = (y[1] - x[1]) / (y[0] - x[0]);
+  return {
+    a,
+    b: x[1] - x[0] * a,
+  }
+}
 
 async function main() {
   const model = {
@@ -56,8 +81,8 @@ async function main() {
       look: [1, 1, 128],
       eye: [0, 0, 128],
       fov: {
-        width: 100,
-        height: 100,
+        width: 300,
+        height: 300,
       },
       depth: 300,
     }),
@@ -73,6 +98,9 @@ async function main() {
   model.camera.subscribe(camera => {
     drawCamera(mapViewport, camera);
   });
+
+  // For debug purposes
+  window.model = model
 }
 
 window.onload = main()
