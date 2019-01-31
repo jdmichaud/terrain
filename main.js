@@ -89,20 +89,25 @@ function getLine(x, y) {
   }
 }
 
-function drawVerticalRect(buffer, { width, height }, x, y, dx, color) {
-  for (var i = x; i < x + dx; i++) {
-    for (var j = y; j < height; j++) {
-      Things[i + j * width] = color;
-    }
+function drawVerticalLine(buffer, { width, height }, x, y, color) {
+  const iwidth = width | 0;
+  const iheight = height | 0;
+  for (let j = y | 0; j < iheight; j = j + 1 | 0) {
+    buffer[x + j * iwidth] = color;
   }
 }
+
 
 function drawImage(viewport, model) {
   const then = performance.now();
   const canvas = viewport.getElementsByTagName('canvas')[0];
   const ctx = canvas.getContext('2d');
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const { width, height } = imageData.width;
+  const { width, height } = imageData;
+  const { mapWidth, mapHeight } = (() => {
+    const { width, height } = model.colorMap;
+    return { mapWidth: width, mapHeight: height };
+  })();
   const buffer = new Uint32Array(imageData.data.buffer);
   const camera = model.camera.get();
   const direction = camera.look.sub(camera.eye);
@@ -116,13 +121,19 @@ function drawImage(viewport, model) {
       right = tmp;
     }
     const { a, b } = getLine(left, right);
-    const horizonLineWidth = right[0] - left[0];
-    const dx = (width / (horizonLineWidth)) | 0;
-    for (let x = 0; x < horizonLineWidth; ++x) {
-      const y = a * x + b | 0;
-      drawVerticalRect(buffer, { width, height }, x, y, dx, 0xFF000000);
+    const dx = ((right[0] - left[0]) / width);
+    const dy = ((right[1] - left[1]) / width);
+    const distanceRatio = distance / camera.depth;
+    for (let x = 0; x < width; ++x) {
+      const index = ((left[0] + dx * x) + ((left[1] + dy * x) * mapWidth)) | 0;
+      const color = model.colorMapBuffer[index];
+      const topoHeight = model.heightMap[index];
+      const y = camera.eye[2] + (camera.eye[2] - topoHeight) * distanceRatio;
+      drawVerticalLine(buffer, { width, height }, x | 0, y | 0, color);
+      // buffer[x + y * width] = 0xFF000000;
     }
   }
+
   ctx.putImageData(imageData, 0, 0);
   console.log(`done in ${(performance.now() - then).toFixed(2)}`);
 }
@@ -138,18 +149,24 @@ async function main() {
       },
       depth: 300,
     }),
-    colorMap: await loadImage('C10W.png'),
-    heightMap: await loadImage('D10.png'),
+    colorMap: await loadImage('maps/C1W.png'),
+    // RGBA to (width x height) 8 bits array
+    heightMap: new Uint8Array((await loadImage('maps/D1.png')).data.filter((x, i) => i % 4 === 0)),
   };
+  // For faster access to the color map
+  model.colorMapBuffer = new Uint32Array(model.colorMap.data.buffer);
+  // Retrieve and intialize viewports
   const viewport = document.getElementById('main');
   const mapViewport = document.getElementById('map');
   initViewport(viewport);
   initViewport(mapViewport);
-
+  // Start drawing
   drawMapBackground(mapViewport, model.colorMap);
   model.camera.subscribe(camera => {
     drawCamera(mapViewport, camera);
-    drawImage(viewport, model);
+    for (var i = 0; i < 1; i++) {
+      drawImage(viewport, model);
+    }
   });
 
   // For debug purposes
