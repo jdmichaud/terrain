@@ -30,7 +30,7 @@ function drawMapBackground(viewport, background) {
   const ctx = canvas.getContext('2d');
   canvas.width = background.width;
   canvas.height = background.height;
-  // ctx.putImageData(background, 0, 0);
+  ctx.putImageData(background, 0, 0);
   // Set SVG size
   svg.setAttribute('viewBox', `0 0 ${background.width} ${background.height}`);
 }
@@ -40,6 +40,7 @@ function drawCamera(viewport, camera) {
 
   const fragment = document.createDocumentFragment();
   fragment.appendChild(createCircle(camera.eye, 10, 'green'));
+  fragment.appendChild(createCircle(camera.look, 10, 'red'));
   const direction = camera.look.sub(camera.eye).normalize();
   const horizon = camera.eye.add(direction.mul(camera.depth));
   fragment.appendChild(createCircle(horizon, 10, 'green'));
@@ -89,51 +90,65 @@ function getLine(x, y) {
   }
 }
 
-function drawVerticalLine(buffer, { width, height }, x, y, color) {
+function drawVerticalLine(buffer, { width, height }, x, y, color, yBuffer) {
   const iwidth = width | 0;
-  const iheight = height | 0;
+  const iheight = yBuffer[x] | 0;
+  const offset = x * iwidth | 0;
   for (let j = y | 0; j < iheight; j = j + 1 | 0) {
     buffer[x + j * iwidth] = color;
   }
+  yBuffer[x] = y;
 }
 
+(function () {
+  let imageData;
+  let imageDataBuffer;
+  let yBuffer;
+  window.render = (colorMap, heightMap, camera) => {
+    if (imageData === undefined) {
+      // TODO: dynamically decide the
+      imageData = new ImageData(512, 512)
+      imageDataBuffer = new Uint32Array(imageData.data.buffer);
+      yBuffer = new Uint16Array(imageData.height);
+    }
+    yBuffer.fill(imageData.height, 0, imageData.height);
+    const { width, height } = imageData;
+    const { mapWidth, mapHeight } = (() => {
+      const { width, height } = colorMap; // We assume colorMapBuffer and heightMap have the same size
+      return { mapWidth: width | 0, mapHeight: height | 0 };
+    })();
+    const colorMap32Buffer = colorMap.colorMap32Buffer;
+    const direction = camera.look.sub(camera.eye);
+    const directionNorm = direction.norm();
+    const getLeftRightWithCamera = getLeftRight(camera);
+    const yStretch = 255 / (255 * directionNorm / camera.depth);
+    for (let distance = directionNorm | 0; distance <= camera.depth; distance = distance + 1 | 0) {
+      let { left, right } = getLeftRightWithCamera(distance);
+      [left, right] = left[0] < right[0] ? [left, right] : [right, left];
+      const dx = ((right[0] - left[0]) / width);
+      const dy = ((right[1] - left[1]) / width);
+      const distanceRatio = directionNorm / distance;
+      const compiledRatio = distanceRatio * yStretch;
+      const eyeHeight = camera.eye[2];
+      for (let x = 0 | 0; x < width; x = x + 1 | 0) {
+        const index = ((left[0] + dx * x) + (((left[1] + dy * x) | 0) * mapWidth)) | 0;
+        const color = colorMap32Buffer[index];
+        const topoHeight = heightMap[index];
+        const y = (eyeHeight + (eyeHeight - topoHeight) * compiledRatio);
+        if (y < height)
+          drawVerticalLine(imageDataBuffer, { width, height }, x | 0, y | 0, color, yBuffer);
+      }
+    }
+    return imageData;
+  }
+})();
 
 function drawImage(viewport, model) {
   const then = performance.now();
   const canvas = viewport.getElementsByTagName('canvas')[0];
   const ctx = canvas.getContext('2d');
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const { width, height } = imageData;
-  const { mapWidth, mapHeight } = (() => {
-    const { width, height } = model.colorMap;
-    return { mapWidth: width, mapHeight: height };
-  })();
-  const buffer = new Uint32Array(imageData.data.buffer);
   const camera = model.camera.get();
-  const direction = camera.look.sub(camera.eye);
-  const directionNorm = direction.norm();
-  const getLeftRightWithCamera = getLeftRight(camera);
-  for (let distance = camera.depth; distance > directionNorm; --distance) {
-    let { left, right } = getLeftRightWithCamera(distance);
-    if (left[0] > right[0]) {
-      const tmp = left;
-      left = right;
-      right = tmp;
-    }
-    const { a, b } = getLine(left, right);
-    const dx = ((right[0] - left[0]) / width);
-    const dy = ((right[1] - left[1]) / width);
-    const distanceRatio = distance / camera.depth;
-    for (let x = 0; x < width; ++x) {
-      const index = ((left[0] + dx * x) + ((left[1] + dy * x) * mapWidth)) | 0;
-      const color = model.colorMapBuffer[index];
-      const topoHeight = model.heightMap[index];
-      const y = camera.eye[2] + (camera.eye[2] - topoHeight) * distanceRatio;
-      drawVerticalLine(buffer, { width, height }, x | 0, y | 0, color);
-      // buffer[x + y * width] = 0xFF000000;
-    }
-  }
-
+  const imageData = render(model.colorMap, model.heightMap, camera);
   ctx.putImageData(imageData, 0, 0);
   console.log(`done in ${(performance.now() - then).toFixed(2)}`);
 }
@@ -154,7 +169,7 @@ async function main() {
     heightMap: new Uint8Array((await loadImage('maps/D1.png')).data.filter((x, i) => i % 4 === 0)),
   };
   // For faster access to the color map
-  model.colorMapBuffer = new Uint32Array(model.colorMap.data.buffer);
+  model.colorMap.colorMap32Buffer = new Uint32Array(model.colorMap.data.buffer);
   // Retrieve and intialize viewports
   const viewport = document.getElementById('main');
   const mapViewport = document.getElementById('map');
@@ -164,9 +179,7 @@ async function main() {
   drawMapBackground(mapViewport, model.colorMap);
   model.camera.subscribe(camera => {
     drawCamera(mapViewport, camera);
-    for (var i = 0; i < 1; i++) {
-      drawImage(viewport, model);
-    }
+    drawImage(viewport, model);
   });
 
   // For debug purposes

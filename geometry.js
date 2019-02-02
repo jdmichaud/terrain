@@ -1,3 +1,3 @@
 function getOrthogonalVector(v) {
-  return [1, -v[0] / v[1], v[2]];
+  return [[0, -1, 0], [1, 0, 0], [0, 0, 1]].mul(v);
 }
