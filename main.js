@@ -39,19 +39,20 @@ function drawCamera(viewport, camera) {
   const svg = clearSvg(viewport.getElementsByTagName('svg')[0]);
 
   const fragment = document.createDocumentFragment();
-  fragment.appendChild(createCircle(camera.eye, 10, 'green'));
-  fragment.appendChild(createCircle(camera.look, 10, 'red'));
-  const direction = camera.look.sub(camera.eye).normalize();
-  const horizon = camera.eye.add(direction.mul(camera.depth));
-  fragment.appendChild(createCircle(horizon, 10, 'green'));
-  fragment.appendChild(createPolyline([camera.eye, horizon], '5', 'green'));
+  fragment.appendChild(createCircle(camera.eye, 10, 'green', 'eye'));
+  // fragment.appendChild(createCircle(camera.look, 10, 'red', 'look'));
 
   {
     const { left, right } = getLeftRight(camera)(camera.depth);
-    fragment.appendChild(createCircle(left, 10, 'green'));
-    fragment.appendChild(createCircle(right, 10, 'green'));
     fragment.appendChild(createPolyline([left, right], '5', 'green'));
+    fragment.appendChild(createCircle(left, 10, 'green', 'left'));
+    fragment.appendChild(createCircle(right, 10, 'green', 'right'));
   }
+
+  const direction = camera.look.sub(camera.eye).normalize();
+  const horizon = camera.eye.add(direction.mul(camera.depth));
+  fragment.appendChild(createCircle(horizon, 10, 'green', 'horizon'));
+  fragment.appendChild(createPolyline([camera.eye, horizon], '5', 'green'));
 
   svg.appendChild(fragment);
 }
@@ -68,12 +69,12 @@ function getLeftRight(camera) {
     const halfOrthogonalVectorX = orthogonalVector[0] * halfFovWidthAtDistance;
     const halfOrthogonalVectorY = orthogonalVector[1] * halfFovWidthAtDistance;
     // left: horizon.add(orthogonalVector.mul(fovWidthAtDistance / 2)),
-    const left = [
+    const right = [
       horizonX + halfOrthogonalVectorX | 0,
       horizonY + halfOrthogonalVectorY | 0,
     ];
     // right: horizon.sub(orthogonalVector.mul(fovWidthAtDistance / 2)),
-    const right = [
+    const left = [
       horizonX - halfOrthogonalVectorX | 0,
       horizonY - halfOrthogonalVectorY | 0,
     ];
@@ -111,20 +112,23 @@ function drawVerticalLine(buffer, { width, height }, x, y, color, yBuffer) {
       imageDataBuffer = new Uint32Array(imageData.data.buffer);
       yBuffer = new Uint16Array(imageData.height);
     }
+    // Initialize the yBuffer to the bottom of the canvas. We will use this yBuffer
+    // to avoid having to draw all the way down.
     yBuffer.fill(imageData.height, 0, imageData.height);
+    // Set a blue sky
+    imageDataBuffer.fill(0xFFEBCE87, 0, imageDataBuffer.length);
     const { width, height } = imageData;
     const { mapWidth, mapHeight } = (() => {
       const { width, height } = colorMap; // We assume colorMapBuffer and heightMap have the same size
       return { mapWidth: width | 0, mapHeight: height | 0 };
     })();
     const colorMap32Buffer = colorMap.colorMap32Buffer;
-    const direction = camera.look.sub(camera.eye);
-    const directionNorm = direction.norm();
+    const directionNorm = camera.look.sub(camera.eye).norm();
     const getLeftRightWithCamera = getLeftRight(camera);
     const yStretch = 255 / (255 * directionNorm / camera.depth);
     for (let distance = directionNorm | 0; distance <= camera.depth; distance = distance + 1 | 0) {
       let { left, right } = getLeftRightWithCamera(distance);
-      [left, right] = left[0] < right[0] ? [left, right] : [right, left];
+      // [left, right] = left[0] < right[0] ? [left, right] : [right, left];
       const dx = ((right[0] - left[0]) / width);
       const dy = ((right[1] - left[1]) / width);
       const distanceRatio = directionNorm / distance;
@@ -135,7 +139,7 @@ function drawVerticalLine(buffer, { width, height }, x, y, color, yBuffer) {
         const color = colorMap32Buffer[index];
         const topoHeight = heightMap[index];
         const y = (eyeHeight + (eyeHeight - topoHeight) * compiledRatio);
-        if (y < height)
+        if (y < yBuffer[x])
           drawVerticalLine(imageDataBuffer, { width, height }, x | 0, y | 0, color, yBuffer);
       }
     }
@@ -143,21 +147,72 @@ function drawVerticalLine(buffer, { width, height }, x, y, color, yBuffer) {
   }
 })();
 
-function drawImage(viewport, model) {
+function drawScene(viewport, model) {
   const then = performance.now();
   const canvas = viewport.getElementsByTagName('canvas')[0];
   const ctx = canvas.getContext('2d');
   const camera = model.camera.get();
   const imageData = render(model.colorMap, model.heightMap, camera);
   ctx.putImageData(imageData, 0, 0);
-  console.log(`done in ${(performance.now() - then).toFixed(2)}`);
+  // console.log(`done in ${(performance.now() - then).toFixed(2)}`);
+}
+
+function decorateMap(viewport, model) {
+  const canvas = viewport.getElementsByTagName('canvas')[0];
+  const widthScale = canvas.width / viewport.clientWidth;
+  const heightScale = canvas.height / viewport.clientHeight;
+
+  const mouseup = (event, mousemoveHandler) => {
+    viewport.removeEventListener('mousemove', mousemoveHandler);
+    viewport.removeEventListener('mouseup', mouseup);
+  };
+  const mousedown = (event, mousemoveHandler) => {
+    viewport.addEventListener('mousemove', mousemoveHandler);
+    viewport.addEventListener('mouseup', (event) => mouseup(event, mousemoveHandler));
+  };
+
+  const horizonMousemove = (event) => {
+    const camera = model.camera.get();
+    const clickPos = getEventPosition(event);
+    const posInCanvas = [clickPos[0] * widthScale, clickPos[1] * heightScale, camera.eye[2]];
+    const newDirection = posInCanvas.sub(camera.eye);
+    camera.depth = newDirection.norm();
+    camera.look = camera.eye.add(newDirection.normalize());
+    model.camera.next(camera);
+  };
+
+  const eyeMousemove = (event) => {
+    const camera = model.camera.get();
+    const clickPos = getEventPosition(event);
+    const direction = camera.look.sub(camera.eye);
+    const directionNorm = direction.norm();
+    const horizon = camera.eye.add(direction.normalize().mul(camera.depth));
+    camera.eye = [clickPos[0] * widthScale, clickPos[1] * heightScale, camera.eye[2]];
+    camera.depth = horizon.sub(camera.eye).norm();
+    camera.look = camera.eye.add(horizon.sub(camera.eye).normalize().mul(directionNorm));
+    model.camera.next(camera);
+  };
+
+  const sideMousemove = (event) => {
+    const moveVector = [event.movementX, event.movementY];
+    const direction = moveVector.dot([0, 1]);
+  }
+
+  const horizon = viewport.getElementsByClassName('horizon')[0];
+  horizon.addEventListener('mousedown', (event) => mousedown(event, horizonMousemove));
+  const eye = viewport.getElementsByClassName('eye')[0];
+  eye.addEventListener('mousedown', (event) => mousedown(event, eyeMousemove));
+  const left = viewport.getElementsByClassName('left')[0];
+  left.addEventListener('mousedown', (event) => mousedown(event, sideMousemove));
+  const right = viewport.getElementsByClassName('right')[0];
+  right.addEventListener('mousedown', (event) => mousedown(event, sideMousemove));
 }
 
 async function main() {
   const model = {
     camera: new Observable.BehaviorSubject({
-      look: [1, 1, 128],
-      eye: [0, 0, 128],
+      look: [101, 101, 128],
+      eye: [100, 100, 128],
       fov: {
         width: 300,
         height: 300,
@@ -179,11 +234,14 @@ async function main() {
   drawMapBackground(mapViewport, model.colorMap);
   model.camera.subscribe(camera => {
     drawCamera(mapViewport, camera);
-    drawImage(viewport, model);
+    decorateMap(mapViewport, model);
+    drawScene(viewport, model);
   });
 
   // For debug purposes
   window.model = model
+  const positionElement = document.getElementById('position');
+  mapViewport.addEventListener('mousemove', (event) => positionElement.innerHTML = getEventPosition(event));
 }
 
 window.onload = main()

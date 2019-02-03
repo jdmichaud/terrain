@@ -35,6 +35,12 @@
       width: 100%;
       height: 100%;
     }
+    .textOverlay {
+      pointer-events: none;
+      font-family: monospace;
+      font-size: 13px;
+      padding: 5px;
+    }
   </style>
 
 </head>
@@ -42,12 +48,15 @@
   <div class="viewport" id="main">
     <canvas class="underlay"></canvas>
     <svg class="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
-    <div class="textOverlay"></div>
+    <div class="textOverlay">
+      <span class="fps"></span>
+    </div>
   </div>
   <div class="viewport" id="map">
     <canvas class="underlay"></canvas>
     <svg class="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
     <div class="textOverlay"></div>
   </div>
+  <span id="position"></span>
 </body>
 </html>
