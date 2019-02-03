@@ -55,16 +55,3 @@ function clearSvg(element) {
   element.parentNode.replaceChild(cNode, element);
   return cNode;
 }
-
-let fpsLabel;
-let then;
-function cycle(now) {
-  if (then !== undefined) {
-    fpsLabel.innerHTML = `${(1000 / (now - then)).toFixed(2)} Hz`;
-  } else {
-    fpsLabel = document.getElementById('main').getElementsByClassName('fps')[0];
-  }
-  then = now;
-  window.requestAnimationFrame(cycle);
-}
-window.requestAnimationFrame(cycle);

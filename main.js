@@ -21,6 +21,7 @@ function initViewport(viewport) {
   canvas.width = viewport.clientWidth;
   canvas.height = viewport.clientHeight;
   svg.setAttribute('viewBox', `0 0 ${viewport.clientWidth} ${viewport.clientHeight}`);
+  viewport.addEventListener('contextmenu', event => event.preventDefault());
 }
 
 function drawMapBackground(viewport, background) {
@@ -187,15 +188,28 @@ function decorateMap(viewport, model) {
     const direction = camera.look.sub(camera.eye);
     const directionNorm = direction.norm();
     const horizon = camera.eye.add(direction.normalize().mul(camera.depth));
-    camera.eye = [clickPos[0] * widthScale, clickPos[1] * heightScale, camera.eye[2]];
+    const posInCanvas = [clickPos[0] * widthScale, clickPos[1] * heightScale];
+    const eyeHeight = model.heightMap[camera.eye[0] + camera.eye[1] * model.colorMap.width] + 30;
+    const horizonHeight = model.heightMap[(horizon[0] + horizon[1] * model.colorMap.width) | 0] + 30;
+    const height = Math.max(eyeHeight, horizonHeight);
+    camera.eye = [...posInCanvas, camera.eye[2]];
     camera.depth = horizon.sub(camera.eye).norm();
+    camera.eye[2] = height;
     camera.look = camera.eye.add(horizon.sub(camera.eye).normalize().mul(directionNorm));
     model.camera.next(camera);
   };
 
-  const sideMousemove = (event) => {
-    const moveVector = [event.movementX, event.movementY];
-    const direction = moveVector.dot([0, 1]);
+  const sideMousemove = (event, side) => {
+    const camera = model.camera.get();
+    const clickPos = getEventPosition(event);
+    const posInCanvas = [clickPos[0] * widthScale, clickPos[1] * heightScale, camera.eye[2]];
+    const direction = camera.look.sub(camera.eye);
+    const horizon = camera.eye.add(direction.normalize().mul(camera.depth));
+    const { left, right } = getLeftRight(camera)(camera.depth);
+    const point = side === 'left' ? [...left, camera.eye[2]] : [...right, camera.eye[2]];
+    const newFovWidth = point.sub(horizon).normalize().dot(posInCanvas.sub(horizon)) * 2;
+    camera.fov.width = newFovWidth;
+    model.camera.next(camera);
   }
 
   const horizon = viewport.getElementsByClassName('horizon')[0];
@@ -203,9 +217,9 @@ function decorateMap(viewport, model) {
   const eye = viewport.getElementsByClassName('eye')[0];
   eye.addEventListener('mousedown', (event) => mousedown(event, eyeMousemove));
   const left = viewport.getElementsByClassName('left')[0];
-  left.addEventListener('mousedown', (event) => mousedown(event, sideMousemove));
+  left.addEventListener('mousedown', (event) => mousedown(event, (event) => sideMousemove(event, 'left')));
   const right = viewport.getElementsByClassName('right')[0];
-  right.addEventListener('mousedown', (event) => mousedown(event, sideMousemove));
+  right.addEventListener('mousedown', (event) => mousedown(event, (event) => sideMousemove(event, 'right')));
 }
 
 async function main() {
