@@ -5,6 +5,7 @@
   <meta charset="utf-8">
   <link rel="icon" href="data:;base64,="> <!-- Prevent request to favicon -->
   <script src="https://unpkg.com/mathjs/dist/math.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/numericjs@1.2.6/numeric-1.2.6.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/jdmichaud/linalg/mathjs.shim.js"></script>
   <script src="http://unpkg.com/@jdmichaud/observable@0.3.3/dist/index.js"></script>
   <script src="geometry.js"></script>
@@ -41,20 +42,25 @@
       font-size: 13px;
       padding: 5px;
     }
+    .container {
+      display: flex;
+    }
   </style>
 
 </head>
 <body>
-  <div class="viewport" id="main">
-    <canvas class="underlay"></canvas>
-    <svg class="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
-    <div class="textOverlay"></div>
+  <div class="container">
+    <div class="viewport" id="map">
+      <canvas class="underlay"></canvas>
+      <svg class="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="textOverlay"></div>
+    </div>
+    <div class="viewport" id="main">
+      <canvas class="underlay"></canvas>
+      <svg class="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="textOverlay"></div>
+    </div>
+    <span id="position"></span>
   </div>
-  <div class="viewport" id="map">
-    <canvas class="underlay"></canvas>
-    <svg class="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
-    <div class="textOverlay"></div>
-  </div>
-  <span id="position"></span>
 </body>
 </html>

@@ -40,7 +40,7 @@ function drawCamera(viewport, camera) {
   const svg = clearSvg(viewport.getElementsByTagName('svg')[0]);
 
   const fragment = document.createDocumentFragment();
-  fragment.appendChild(createCircle(camera.eye, 10, 'green', 'eye'));
+  fragment.appendChild(createCircle(camera.eye, 20, 'green', 'eye'));
   // fragment.appendChild(createCircle(camera.look, 10, 'red', 'look'));
 
   {
@@ -52,7 +52,7 @@ function drawCamera(viewport, camera) {
 
   const direction = camera.look.sub(camera.eye).normalize();
   const horizon = camera.eye.add(direction.mul(camera.depth));
-  fragment.appendChild(createCircle(horizon, 10, 'green', 'horizon'));
+  fragment.appendChild(createCircle(horizon, 20, 'green', 'horizon'));
   fragment.appendChild(createPolyline([camera.eye, horizon], '5', 'green'));
 
   svg.appendChild(fragment);
@@ -194,7 +194,7 @@ function decorateMap(viewport, model) {
     const height = Math.max(eyeHeight, horizonHeight);
     camera.eye = [...posInCanvas, camera.eye[2]];
     camera.depth = horizon.sub(camera.eye).norm();
-    camera.eye[2] = height;
+    // camera.eye[2] = height;
     camera.look = camera.eye.add(horizon.sub(camera.eye).normalize().mul(directionNorm));
     model.camera.next(camera);
   };
